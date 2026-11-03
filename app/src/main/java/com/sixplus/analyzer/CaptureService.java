@@ -1,6 +1,10 @@
 package com.sixplus.analyzer;
 
 import android.app.*;
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.text.TextRecognizer;
+import com.google.mlkit.vision.text.TextRecognition;
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
