@@ -216,7 +216,7 @@ private boolean isRecognizing = false;
         overlayBody.setPadding(4, 8, 4, 2);
 
         addOverlayLine("وضعیت: دریافت تصویر فعال");
-        addOverlayLine("تشخیص کارت‌ها: در حال آماده‌سازی");
+        recognitionLine = addOverlayLine("تشخیص کارت‌ها: در انتظار تصویر");
         addOverlayLine("Player / Dealer / Split: —");
         addOverlayLine("پیشنهاد شرط: هنوز محاسبه نمی‌شود");
 
