@@ -57,6 +57,9 @@ private boolean isRecognizing = false;
     @Override
     public void onCreate() {
         super.onCreate();
+        textRecognizer = TextRecognition.getClient(
+        TextRecognizerOptions.DEFAULT_OPTIONS
+);
 
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = new NotificationChannel(
