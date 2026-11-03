@@ -45,7 +45,10 @@ public class CaptureService extends Service {
     private VirtualDisplay display;
     private ImageReader reader;
     private long lastSaved;
-
+    
+private TextRecognizer textRecognizer;
+private TextView recognitionLine;
+private boolean isRecognizing = false;
     private WindowManager windowManager;
     private View overlayView;
     private LinearLayout overlayBody;
