@@ -22,6 +22,7 @@ jobs:
           unzip -q 6plus_analyzer_source.zip -d extracted
           cp -R extracted/6plus_analyzer/. .
           rm -rf extracted
+          rm -f .github/workflows/build-apk.yml
           rm -f 6plus_analyzer_source.zip
 
       - name: Commit extracted files
