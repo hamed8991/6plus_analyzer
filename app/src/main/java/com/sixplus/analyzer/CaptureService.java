@@ -414,13 +414,13 @@ private boolean isRecognizing = false;
             Bitmap enlarged = null;
             try {
                 // Rank glyphs are printed in the upper-left corner of each card.
-                int areaWidth = Math.max(1, Math.round(card.width * 0.62f));
-                int areaHeight = Math.max(1, Math.round(card.height * 0.62f));
+                int areaWidth = Math.max(1, Math.round(card.width * 0.46f));
+                int areaHeight = Math.max(1, Math.round(card.height * 0.44f));
                 indexArea = Bitmap.createBitmap(screen, card.left, card.top,
                         Math.min(areaWidth, screen.getWidth() - card.left),
                         Math.min(areaHeight, screen.getHeight() - card.top));
                 enlarged = Bitmap.createScaledBitmap(indexArea,
-                        indexArea.getWidth() * 3, indexArea.getHeight() * 3, true);
+                        indexArea.getWidth() * 5, indexArea.getHeight() * 5, true);
                 if (indexArea != enlarged) indexArea.recycle();
 
                 final Bitmap ocrBitmap = enlarged;
@@ -461,10 +461,11 @@ private boolean isRecognizing = false;
     private void updateRecognizedRanks(String[] ranks) {
         new Handler(Looper.getMainLooper()).post(() -> {
             if (playerCardsLine == null || splitCardsLine == null || dealerCardsLine == null) return;
-            playerCardsLine.setText("بازیکن: [ " + ranks[7] + " ] [ " + ranks[8] + " ]");
-            splitCardsLine.setText("اسپلیت: [ " + ranks[2] + " ] [ " + ranks[3]
-                    + " ] [ " + ranks[4] + " ] [ " + ranks[5] + " ] [ " + ranks[6] + " ]");
-            dealerCardsLine.setText("دیلر: [ " + ranks[0] + " ] [ " + ranks[1] + " ]");
+            // Render each table group from the player's right toward the left.
+            playerCardsLine.setText("بازیکن: [ " + ranks[8] + " ] [ " + ranks[7] + " ]");
+            splitCardsLine.setText("اسپلیت: [ " + ranks[6] + " ] [ " + ranks[5]
+                    + " ] [ " + ranks[4] + " ] [ " + ranks[3] + " ] [ " + ranks[2] + " ]");
+            dealerCardsLine.setText("دیلر: [ " + ranks[1] + " ] [ " + ranks[0] + " ]");
             if (recognitionLine != null) {
                 recognitionLine.setText("تشخیص رتبه انجام شد | خال: مرحله بعد");
             }
