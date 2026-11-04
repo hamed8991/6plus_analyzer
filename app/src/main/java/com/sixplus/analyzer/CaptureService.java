@@ -155,11 +155,10 @@ public class CaptureService extends Service {
     }
 
     private String matchCard(Bitmap card) {
-        // The upper-left corner contains rank above suit in this game's card artwork.
-        Bitmap rank=Bitmap.createBitmap(card,Math.max(0,card.getWidth()/12),Math.max(0,card.getHeight()/14),
-                Math.max(1,card.getWidth()*2/5),Math.max(1,card.getHeight()*2/5));
-        Bitmap suit=Bitmap.createBitmap(card,Math.max(0,card.getWidth()/12),Math.max(0,card.getHeight()*2/5),
-                Math.max(1,card.getWidth()*2/5),Math.max(1,card.getHeight()/3));
+        // Digital card tiles: rank at upper-left, suit immediately below.
+        int cw=card.getWidth(), ch=card.getHeight();
+        Bitmap rank=Bitmap.createBitmap(card,0,0,Math.max(1,cw*3/5),Math.max(1,ch*3/5));
+        Bitmap suit=Bitmap.createBitmap(card,0,Math.max(0,ch*2/5),Math.max(1,cw*3/5),Math.max(1,ch*3/5));
         String r=templateGlyph(rank,"6789TJQKA");
         int color=dominantCardColor(suit);
         String s=templateSuit(suit,color);
@@ -174,7 +173,7 @@ public class CaptureService extends Service {
             double score=bitmapDistance(sample,t);t.recycle();
             if(score<bestScore){bestScore=score;best=String.valueOf(candidates.charAt(n));}
         }
-        return bestScore<0.48?best:"?";
+        return bestScore<0.62?best:"?";
     }
 
     private String templateSuit(Bitmap sample,int color) {
@@ -184,7 +183,7 @@ public class CaptureService extends Service {
             double score=bitmapDistance(sample,t);t.recycle();
             if(score<bestScore){bestScore=score;best=suit;}
         }
-        if(bestScore>0.58) return color==Color.RED?"♥/♦":"♣/♠";
+        if(bestScore>0.68) return color==Color.RED?"♥/♦":"♣/♠";
         if(color==Color.RED && (best.equals("♣")||best.equals("♠"))) return "♥/♦";
         if(color!=Color.RED && (best.equals("♥")||best.equals("♦"))) return "♣/♠";
         return best;
@@ -202,8 +201,13 @@ public class CaptureService extends Service {
         for(int y=0;y<16;y++)for(int x=0;x<12;x++) {
             int ax=Math.min(a.getWidth()-1,x*a.getWidth()/12), ay=Math.min(a.getHeight()-1,y*a.getHeight()/16);
             int bx=Math.min(b.getWidth()-1,x*b.getWidth()/12), by=Math.min(b.getHeight()-1,y*b.getHeight()/16);
-            int av=Color.red(a.getPixel(ax,ay))>100?1:0;
-            int bv=Color.red(b.getPixel(bx,by))>100?1:0;
+            // Source tiles are light with dark/red ink; templates are dark with white ink.
+            int ac=a.getPixel(ax,ay);
+            int ar=Color.red(ac), ag=Color.green(ac), ab=Color.blue(ac);
+            boolean ink=(ar>130 && ar>ag*1.22f && ar>ab*1.12f) || ((ar+ag+ab)/3<165);
+            int av=ink?1:0;
+            int bc=b.getPixel(bx,by);
+            int bv=((Color.red(bc)+Color.green(bc)+Color.blue(bc))/3)>100?1:0;
             diff+=Math.abs(av-bv);count++;
         }
         return diff/count;
