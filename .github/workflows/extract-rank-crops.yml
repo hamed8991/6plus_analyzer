@@ -2,6 +2,9 @@ name: Extract real card rank crops
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/extract-rank-crops.yml'
 
 permissions:
   contents: read
