@@ -417,6 +417,9 @@ InputImage inputImage = InputImage.fromBitmap(scaledCardArea, 0);
             })
             .addOnCompleteListener(task -> {
                 isRecognizing = false;
+                if (!scaledCardArea.isRecycled()) {
+    scaledCardArea.recycle();
+                }
                 if (!crop.isRecycled()) {
                     if (!cardArea.isRecycled()) {
     cardArea.recycle();
