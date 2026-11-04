@@ -1,152 +1,96 @@
 package com.sixplus.analyzer;
 
 import android.graphics.Bitmap;
-import android.graphics.Color;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * First-stage visual card detector.
+ * Fixed-layout locator for the mobile 6+ Poker table.
  *
- * Detects light, playing-card-shaped regions in a captured frame and keeps
- * stable screen coordinates. Rank/suit are deliberately UNKNOWN until a
- * card-face classifier is trained with samples from the actual game skin.
+ * The nine normalized regions are based on the user-provided 832x1856
+ * game screenshot. Coordinates are normalized so they scale with capture size.
+ * This stage only locates card slots; rank and suit intentionally remain unknown.
  */
 public final class CardVisionEngine {
-    private static final int SAMPLE_STEP = 3;
-    private static final float MIN_ASPECT = 0.48f;
-    private static final float MAX_ASPECT = 0.88f;
+    public static final String[] SLOT_NAMES = {
+            "Dealer 1", "Dealer 2",
+            "Split 1", "Split 2", "Split 3", "Split 4", "Split 5",
+            "Player 1", "Player 2"
+    };
+
+    // left, top, right, bottom as fractions of the captured screen.
+    // Bounds tightly cover each card face and exclude the payout labels below.
+    private static final float[][] SLOT_BOUNDS = {
+            {0.052f, 0.316f, 0.132f, 0.363f},
+            {0.133f, 0.316f, 0.213f, 0.363f},
+            {0.286f, 0.316f, 0.364f, 0.363f},
+            {0.365f, 0.316f, 0.443f, 0.363f},
+            {0.444f, 0.316f, 0.522f, 0.363f},
+            {0.523f, 0.316f, 0.601f, 0.363f},
+            {0.602f, 0.316f, 0.680f, 0.363f},
+            {0.785f, 0.316f, 0.864f, 0.363f},
+            {0.865f, 0.316f, 0.944f, 0.363f}
+    };
 
     public static final class DetectedCard {
+        public final int index;
+        public final String slot;
         public final int left, top, width, height;
-        public final float confidence;
         public final String rank = "?";
         public final String suit = "?";
+        public final float confidence;
 
-        DetectedCard(int l, int t, int w, int h, float c) {
-            left = l; top = t; width = w; height = h; confidence = c;
+        DetectedCard(int i, String name, int l, int t, int w, int h) {
+            index = i;
+            slot = name;
+            left = l;
+            top = t;
+            width = w;
+            height = h;
+            confidence = 1.0f; // fixed ROI position, not a card-face recognition score
         }
 
         public String toRecord() {
-            return left + "," + top + "," + width + "," + height
-                    + ",?,?," + String.format(java.util.Locale.US, "%.2f", confidence);
+            return index + "," + slot + "," + left + "," + top + ","
+                    + width + "," + height + ",?,?";
         }
     }
 
     public static final class Result {
         public final List<DetectedCard> cards;
         public final String csv;
+
         Result(List<DetectedCard> found) {
             cards = Collections.unmodifiableList(found);
-            StringBuilder out = new StringBuilder("left,top,width,height,rank,suit,confidence\n");
+            StringBuilder out = new StringBuilder(
+                    "index,slot,left,top,width,height,rank,suit\n");
             for (DetectedCard card : found) out.append(card.toRecord()).append('\n');
             csv = out.toString();
         }
     }
 
-    private static final class Run {
-        int left, right, top, bottom, hits;
-        Run(int l, int r, int y) { left=l; right=r; top=y; bottom=y; hits=1; }
-        void add(int l, int r, int y) {
-            left=Math.min(left,l); right=Math.max(right,r);
-            top=Math.min(top,y); bottom=Math.max(bottom,y); hits++;
-        }
-    }
-
     public Result analyze(Bitmap source) {
-        if (source == null || source.isRecycled()) return new Result(new ArrayList<>());
-        int w = source.getWidth(), h = source.getHeight();
-        List<Run> regions = new ArrayList<>();
-        List<Run> previous = new ArrayList<>();
-
-        for (int y = 0; y < h; y += SAMPLE_STEP) {
-            List<Run> current = new ArrayList<>();
-            int x = 0;
-            while (x < w) {
-                while (x < w && !isCardFacePixel(source.getPixel(x, y))) x += SAMPLE_STEP;
-                if (x >= w) break;
-                int start = x;
-                while (x < w && isCardFacePixel(source.getPixel(x, y))) x += SAMPLE_STEP;
-                int end = Math.min(w - 1, x);
-                if (end - start >= Math.max(18, w / 90)) {
-                    Run match = findOverlapping(previous, start, end);
-                    if (match == null) {
-                        Run run = new Run(start, end, y);
-                        current.add(run);
-                        regions.add(run);
-                    } else {
-                        match.add(start, end, y);
-                        current.add(match);
-                    }
-                }
-                x += SAMPLE_STEP;
-            }
-            previous = current;
-        }
-
         List<DetectedCard> found = new ArrayList<>();
-        for (Run r : regions) {
-            int rw = r.right-r.left, rh = r.bottom-r.top;
-            if (rh < h/18 || rw < w/45) continue;
-            float aspect = (float)rw/(float)rh;
-            if (aspect < MIN_ASPECT || aspect > MAX_ASPECT) continue;
-            if (r.hits < 5) continue;
-            float confidence = Math.min(0.99f, 0.45f + r.hits / 80f);
-            found.add(new DetectedCard(r.left, r.top, rw, rh, confidence));
-        }
+        if (source == null || source.isRecycled()) return new Result(found);
 
-        // Merge duplicate boxes generated by neighboring scan bands.
-        found = mergeDuplicates(found);
-        found.sort(Comparator.comparingInt((DetectedCard c) -> c.top)
-                .thenComparingInt(c -> c.left));
+        int screenW = source.getWidth();
+        int screenH = source.getHeight();
+        for (int i = 0; i < SLOT_BOUNDS.length; i++) {
+            float[] b = SLOT_BOUNDS[i];
+            int left = clamp(Math.round(b[0] * screenW), 0, screenW - 1);
+            int top = clamp(Math.round(b[1] * screenH), 0, screenH - 1);
+            int right = clamp(Math.round(b[2] * screenW), left + 1, screenW);
+            int bottom = clamp(Math.round(b[3] * screenH), top + 1, screenH);
+            found.add(new DetectedCard(i, SLOT_NAMES[i], left, top,
+                    right - left, bottom - top));
+        }
         return new Result(found);
     }
 
-    private boolean isCardFacePixel(int color) {
-        int red=Color.red(color), green=Color.green(color), blue=Color.blue(color);
-        int max=Math.max(red,Math.max(green,blue));
-        int min=Math.min(red,Math.min(green,blue));
-        return red > 205 && green > 205 && blue > 195 && (max-min) < 65;
-    }
-
-    private Run findOverlapping(List<Run> previous, int left, int right) {
-        for (Run r : previous) {
-            if (left <= r.right + 15 && right >= r.left - 15) return r;
-        }
-        return null;
-    }
-
-    private List<DetectedCard> mergeDuplicates(List<DetectedCard> input) {
-        List<DetectedCard> out = new ArrayList<>();
-        for (DetectedCard c : input) {
-            boolean duplicate = false;
-            for (int i=0; i<out.size(); i++) {
-                DetectedCard p=out.get(i);
-                int overlapLeft=Math.max(c.left,p.left);
-                int overlapTop=Math.max(c.top,p.top);
-                int overlapRight=Math.min(c.left+c.width,p.left+p.width);
-                int overlapBottom=Math.min(c.top+c.height,p.top+p.height);
-                if (overlapRight>overlapLeft && overlapBottom>overlapTop) {
-                    int union=(c.width*c.height)+(p.width*p.height)
-                            -((overlapRight-overlapLeft)*(overlapBottom-overlapTop));
-                    float ratio=union==0?0f:(float)((overlapRight-overlapLeft)
-                            *(overlapBottom-overlapTop))/union;
-                    if (ratio > 0.35f) {
-                        int l=Math.min(c.left,p.left), t=Math.min(c.top,p.top);
-                        int r=Math.max(c.left+c.width,p.left+p.width);
-                        int b=Math.max(c.top+c.height,p.top+p.height);
-                        out.set(i,new DetectedCard(l,t,r-l,b-t,
-                                Math.max(c.confidence,p.confidence)));
-                        duplicate=true;
-                        break;
-                    }
-                }
-            }
-            if (!duplicate) out.add(c);
-        }
-        return out;
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(value, max));
     }
 }
