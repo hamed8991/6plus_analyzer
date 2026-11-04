@@ -47,6 +47,7 @@ public class CaptureService extends Service {
     private long lastSaved;
     
 private TextRecognizer textRecognizer;
+private final CardVisionEngine cardVisionEngine = new CardVisionEngine();
 private TextView recognitionLine;
 private boolean isRecognizing = false;
     private WindowManager windowManager;
@@ -356,6 +357,18 @@ private boolean isRecognizing = false;
                 if (!crop.compress(Bitmap.CompressFormat.PNG, 100, output)) {
                     throw new IllegalStateException("ذخیره تصویر ناموفق بود");
                 }
+            }
+
+            // First-stage visual detection: locate card-shaped light regions
+            // and persist their screen coordinates for calibration/classification.
+            CardVisionEngine.Result visualResult = cardVisionEngine.analyze(crop);
+            File recordsFile = new File(directory, "detected-cards.csv");
+            try (FileOutputStream records = new FileOutputStream(recordsFile, false)) {
+                records.write(visualResult.csv.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            if (recognitionLine != null) {
+                recognitionLine.setText("ناحیه‌های کارت پیدا شده: "
+                        + visualResult.cards.size() + " از ۹ | رتبه و خال: در انتظار آموزش");
             }
 
             if (isRecognizing || textRecognizer == null) return;
