@@ -376,8 +376,8 @@ private boolean isRecognizing = false;
                         + visualResult.cards.size() + " جایگاه از ۹ | رتبه و خال: مرحله بعد");
             }
 
-            // This commit intentionally performs location only. Card-face OCR
-            // will be added after the nine fixed regions are verified on-device.
+            // Recognize the rank from the upper-left index area of each fixed card ROI.
+            recognizeCardRanks(crop, visualResult);
 
         } catch (Exception e) {
             if (recognitionStarted) isRecognizing = false;
@@ -398,6 +398,76 @@ private boolean isRecognizing = false;
             if (padded != null && !padded.isRecycled()) padded.recycle();
             if (image != null) image.close();
         }
+    }
+
+    private void recognizeCardRanks(Bitmap screen, CardVisionEngine.Result result) {
+        if (screen == null || result == null || result.cards.isEmpty()) return;
+
+        final String[] ranks = new String[result.cards.size()];
+        final int[] completed = {0};
+        final int total = result.cards.size();
+
+        for (int i = 0; i < total; i++) {
+            final int index = i;
+            CardVisionEngine.DetectedCard card = result.cards.get(i);
+            Bitmap indexArea = null;
+            Bitmap enlarged = null;
+            try {
+                // Rank glyphs are printed in the upper-left corner of each card.
+                int areaWidth = Math.max(1, Math.round(card.width * 0.62f));
+                int areaHeight = Math.max(1, Math.round(card.height * 0.62f));
+                indexArea = Bitmap.createBitmap(screen, card.left, card.top,
+                        Math.min(areaWidth, screen.getWidth() - card.left),
+                        Math.min(areaHeight, screen.getHeight() - card.top));
+                enlarged = Bitmap.createScaledBitmap(indexArea,
+                        indexArea.getWidth() * 3, indexArea.getHeight() * 3, true);
+                if (indexArea != enlarged) indexArea.recycle();
+
+                textRecognizer.process(InputImage.fromBitmap(enlarged, 0))
+                        .addOnCompleteListener(task -> {
+                            String rank = "?";
+                            if (task.isSuccessful() && task.getResult() != null) {
+                                rank = parseRank(task.getResult().getText());
+                            }
+                            ranks[index] = rank;
+                            if (enlarged != null && !enlarged.isRecycled()) enlarged.recycle();
+
+                            completed[0]++;
+                            if (completed[0] == total) {
+                                updateRecognizedRanks(ranks);
+                            }
+                        });
+            } catch (Exception ignored) {
+                if (indexArea != null && !indexArea.isRecycled()) indexArea.recycle();
+                if (enlarged != null && !enlarged.isRecycled()) enlarged.recycle();
+                ranks[index] = "?";
+                completed[0]++;
+                if (completed[0] == total) updateRecognizedRanks(ranks);
+            }
+        }
+    }
+
+    private String parseRank(String raw) {
+        if (raw == null) return "?";
+        String value = raw.toUpperCase(java.util.Locale.US)
+                .replace(" ", "").replace("\\n", "")
+                .replace("|", "I").replace("O", "0");
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("10|[6-9]|[AJQK]").matcher(value);
+        return matcher.find() ? matcher.group() : "?";
+    }
+
+    private void updateRecognizedRanks(String[] ranks) {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            if (playerCardsLine == null || splitCardsLine == null || dealerCardsLine == null) return;
+            playerCardsLine.setText("بازیکن: [ " + ranks[7] + " ] [ " + ranks[8] + " ]");
+            splitCardsLine.setText("اسپلیت: [ " + ranks[2] + " ] [ " + ranks[3]
+                    + " ] [ " + ranks[4] + " ] [ " + ranks[5] + " ] [ " + ranks[6] + " ]");
+            dealerCardsLine.setText("دیلر: [ " + ranks[0] + " ] [ " + ranks[1] + " ]");
+            if (recognitionLine != null) {
+                recognitionLine.setText("تشخیص رتبه انجام شد | خال: مرحله بعد");
+            }
+        });
     }
 
     private Notification notification() {
