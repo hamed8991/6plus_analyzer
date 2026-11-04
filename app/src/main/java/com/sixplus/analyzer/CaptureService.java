@@ -375,6 +375,41 @@ private boolean isRecognizing = false;
                 );
             }
 
+            if (!isRecognizing) {
+    isRecognizing = true;
+
+    InputImage inputImage = InputImage.fromBitmap(crop, 0);
+
+    textRecognizer.process(inputImage)
+            .addOnSuccessListener(result -> {
+                String detectedText = result.getText();
+
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (recognitionLine != null) {
+                        recognitionLine.setText(
+                                "متن شناسایی‌شده: " + detectedText
+                        );
+                    }
+                });
+            })
+            .addOnFailureListener(e -> {
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    if (recognitionLine != null) {
+                        recognitionLine.setText("خطا در تشخیص تصویر");
+                    }
+                });
+            })
+            .addOnCompleteListener(task -> {
+                isRecognizing = false;
+                if (!crop.isRecycled()) {
+                    crop.recycle();
+                }
+            });
+} else {
+    crop.recycle();
+}
+
+padded.recycle();
             crop.recycle();
             padded.recycle();
 
