@@ -50,6 +50,10 @@ public class MainActivity extends Activity {
         start.setText("فعال‌کردن پنجره شناور و دریافت تصویر");
         root.addView(start);
 
+        Button calibrate = new Button(this);
+        calibrate.setText("تنظیم جای ۹ کارت");
+        root.addView(calibrate);
+
         Button stop = new Button(this);
         stop.setText("توقف");
         root.addView(stop);
@@ -67,6 +71,7 @@ public class MainActivity extends Activity {
         setContentView(root);
 
         start.setOnClickListener(v -> beginSetup());
+        calibrate.setOnClickListener(v -> startActivity(new Intent(this, CalibrationActivity.class)));
 
         stop.setOnClickListener(v -> {
             Intent i = new Intent(this, CaptureService.class);
