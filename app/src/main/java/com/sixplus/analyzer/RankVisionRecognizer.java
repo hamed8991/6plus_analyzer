@@ -1,84 +1,85 @@
 package com.sixplus.analyzer;
 
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Typeface;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import android.graphics.Matrix;
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.text.Text;
+import com.google.mlkit.vision.text.TextRecognition;
+import com.google.mlkit.vision.text.TextRecognizer;
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
+import com.google.android.gms.tasks.Tasks;
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-/** On-device shape/template matcher for the rank glyph in a card corner (not OCR). */
-public final class RankVisionRecognizer {
-    private static final int W=40, H=48;
-    private static final String[] RANKS={"6","7","8","9","10","J","Q","K","A"};
-    private final Map<String,boolean[]> templates=new LinkedHashMap<>();
-
-    public RankVisionRecognizer() {
-        for(String rank:RANKS) templates.put(rank, render(rank));
-    }
+/**
+ * Full-card rank recognizer.
+ * Unlike the previous corner-template matcher, this sends the complete card ROI
+ * to ML Kit OCR after enlarging it. Unknown/ambiguous readings stay '?'.
+ */
+public final class RankVisionRecognizer implements AutoCloseable {
+    private static final Pattern TOKEN = Pattern.compile("(?<![A-Z0-9])(10|[6789AJQK])(?![A-Z0-9])");
+    private final TextRecognizer recognizer =
+            TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
 
     public String recognize(Bitmap screen, CardVisionEngine.DetectedCard card) {
-        if(screen==null || card==null || screen.isRecycled()) return "?";
-        int cw=Math.min(Math.max(2,Math.round(card.width*.48f)),screen.getWidth()-card.left);
-        int ch=Math.min(Math.max(2,Math.round(card.height*.34f)),screen.getHeight()-card.top);
-        if(cw<2 || ch<2) return "?";
-        Bitmap crop=Bitmap.createBitmap(screen,card.left,card.top,cw,ch);
+        if (screen == null || card == null || screen.isRecycled()) return "?";
+        int left = Math.max(0, card.left);
+        int top = Math.max(0, card.top);
+        int width = Math.min(card.width, screen.getWidth() - left);
+        int height = Math.min(card.height, screen.getHeight() - top);
+        if (width < 2 || height < 2) return "?";
+
+        Bitmap fullCard = null;
+        Bitmap enlarged = null;
         try {
-            boolean[] sample=normalize(crop);
-            if(sample==null) return "?";
-            String best="?"; double first=0, second=0;
-            for(Map.Entry<String,boolean[]> e:templates.entrySet()) {
-                double score=iou(sample,e.getValue());
-                if(score>first){second=first;first=score;best=e.getKey();}
-                else if(score>second) second=score;
-            }
-            return first>=.40 && first-second>=.02 ? best : "?";
-        } finally { crop.recycle(); }
-    }
+            // Use the ENTIRE detected card rectangle, not only its upper-left corner.
+            fullCard = Bitmap.createBitmap(screen, left, top, width, height);
+            Matrix matrix = new Matrix();
+            matrix.postScale(3.0f, 3.0f);
+            enlarged = Bitmap.createBitmap(fullCard, 0, 0,
+                    fullCard.getWidth(), fullCard.getHeight(), matrix, true);
 
-    private boolean[] render(String text) {
-        Bitmap b=Bitmap.createBitmap(W,H,Bitmap.Config.ARGB_8888);
-        Canvas c=new Canvas(b); c.drawColor(Color.WHITE);
-        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG); p.setColor(Color.BLACK);
-        p.setTypeface(Typeface.create("sans-serif",Typeface.BOLD));
-        p.setTextAlign(Paint.Align.CENTER); p.setTextSize(text.length()==2?29:36);
-        Paint.FontMetrics fm=p.getFontMetrics();
-        c.drawText(text,W/2f,(H-(fm.bottom-fm.top))/2f-fm.top,p);
-        boolean[] out=normalize(b); b.recycle(); return out==null?new boolean[W*H]:out;
-    }
-
-    private boolean[] normalize(Bitmap b) {
-        int w=b.getWidth(),h=b.getHeight(); int[] px=new int[w*h];
-        b.getPixels(px,0,w,0,0,w,h);
-        int minX=w,minY=h,maxX=-1,maxY=-1;
-        for(int y=0;y<h;y++) for(int x=0;x<w;x++) if(ink(px[y*w+x])) {
-            minX=Math.min(minX,x);maxX=Math.max(maxX,x);
-            minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+            Text result = Tasks.await(
+                    recognizer.process(InputImage.fromBitmap(enlarged, 0)),
+                    2500, TimeUnit.MILLISECONDS);
+            return extractRank(result);
+        } catch (Exception ignored) {
+            return "?";
+        } finally {
+            if (enlarged != null && !enlarged.isRecycled()) enlarged.recycle();
+            if (fullCard != null && !fullCard.isRecycled()) fullCard.recycle();
         }
-        if(maxX<minX || maxY<minY) return null;
-        int bw=maxX-minX+1,bh=maxY-minY+1;
-        float scale=Math.min((W-6f)/bw,(H-6f)/bh);
-        int dw=Math.max(1,Math.round(bw*scale)),dh=Math.max(1,Math.round(bh*scale));
-        int ox=(W-dw)/2,oy=(H-dh)/2; boolean[] out=new boolean[W*H];
-        for(int y=0;y<dh;y++) for(int x=0;x<dw;x++) {
-            int sx=minX+Math.min(bw-1,(int)(x/scale));
-            int sy=minY+Math.min(bh-1,(int)(y/scale));
-            out[(oy+y)*W+ox+x]=ink(px[sy*w+sx]);
+    }
+
+    private String extractRank(Text result) {
+        if (result == null) return "?";
+        StringBuilder all = new StringBuilder();
+        for (Text.TextBlock block : result.getTextBlocks()) {
+            all.append(' ').append(block.getText());
+            for (Text.Line line : block.getLines()) all.append(' ').append(line.getText());
         }
-        return out;
+        String normalized = all.toString().toUpperCase(Locale.ROOT)
+                .replace('Ｏ', '0')
+                .replace('Ｉ', '1')
+                .replace('|', '1')
+                .replace('Ｇ', '6')
+                .replace('Ｓ', '5')
+                .replaceAll("[^A-Z0-9]", " ");
+
+        Matcher matcher = TOKEN.matcher(normalized);
+        String found = null;
+        while (matcher.find()) {
+            String candidate = matcher.group(1);
+            if (found != null && !found.equals(candidate)) return "?";
+            found = candidate;
+        }
+        return found == null ? "?" : found;
     }
 
-    private boolean ink(int color) {
-        int r=Color.red(color),g=Color.green(color),b=Color.blue(color);
-        int lum=(299*r+587*g+114*b)/1000;
-        int max=Math.max(r,Math.max(g,b)),min=Math.min(r,Math.min(g,b));
-        return lum<150 && (max-min>28 || lum<105);
-    }
-
-    private double iou(boolean[] a,boolean[] b) {
-        int both=0,either=0;
-        for(int i=0;i<a.length;i++){if(a[i]&&b[i])both++;if(a[i]||b[i])either++;}
-        return either==0?0:(double)both/either;
+    @Override
+    public void close() {
+        recognizer.close();
     }
 }
