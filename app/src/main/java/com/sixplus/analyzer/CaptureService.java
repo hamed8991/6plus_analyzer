@@ -410,8 +410,7 @@ private boolean isRecognizing = false;
 }
 
 padded.recycle();
-            crop.recycle();
-            padded.recycle();
+
 
         } catch (Exception ignored) {
 
