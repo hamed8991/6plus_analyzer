@@ -372,59 +372,12 @@ private boolean isRecognizing = false;
                 records.write(visualResult.csv.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
             if (recognitionLine != null) {
-                recognitionLine.setText("ناحیه‌های احتمالی پیدا شده: "
-                        + visualResult.cards.size() + " از ۹ | تشخیص عدد و خال در حال توسعه");
+                recognitionLine.setText("مکان‌یابی ثابت: "
+                        + visualResult.cards.size() + " جایگاه از ۹ | رتبه و خال: مرحله بعد");
             }
 
-            if (isRecognizing || textRecognizer == null) return;
-
-            int left = Math.max(0, Math.min(crop.getWidth() - 1,
-                    (int) (crop.getWidth() * 0.70f)));
-            int top = Math.max(0, Math.min(crop.getHeight() - 1,
-                    (int) (crop.getHeight() * 0.215f)));
-            int width = Math.max(1, Math.min(crop.getWidth() - left,
-                    (int) (crop.getWidth() * 0.29f)));
-            int height = Math.max(1, Math.min(crop.getHeight() - top,
-                    (int) (crop.getHeight() * 0.12f)));
-
-            cardArea = Bitmap.createBitmap(crop, left, top, width, height);
-            scaledCardArea = Bitmap.createScaledBitmap(
-                    cardArea, Math.max(1, width * 3),
-                    Math.max(1, height * 3), true
-            );
-            cardArea.recycle();
-            cardArea = null;
-
-            isRecognizing = true;
-            recognitionStarted = true;
-            InputImage inputImage = InputImage.fromBitmap(scaledCardArea, 0);
-            final Bitmap bitmapForRecognition = scaledCardArea;
-            scaledCardArea = null;
-
-            textRecognizer.process(inputImage)
-                    .addOnSuccessListener(result -> {
-                        String detectedText = result.getText();
-                        new Handler(Looper.getMainLooper()).post(() -> {
-                            if (recognitionLine != null) {
-                                recognitionLine.setText(
-                                        detectedText == null || detectedText.trim().isEmpty()
-                                                ? "وضعیت تشخیص: متن قابل‌خواندن پیدا نشد"
-                                                : "OCR آزمایشی: " + detectedText
-                                );
-                            }
-                        });
-                    })
-                    .addOnFailureListener(e -> new Handler(Looper.getMainLooper()).post(() -> {
-                        if (recognitionLine != null) {
-                            recognitionLine.setText("خطای OCR: " + e.getClass().getSimpleName());
-                        }
-                    }))
-                    .addOnCompleteListener(task -> {
-                        if (!bitmapForRecognition.isRecycled()) {
-                            bitmapForRecognition.recycle();
-                        }
-                        isRecognizing = false;
-                    });
+            // This commit intentionally performs location only. Card-face OCR
+            // will be added after the nine fixed regions are verified on-device.
 
         } catch (Exception e) {
             if (recognitionStarted) isRecognizing = false;
