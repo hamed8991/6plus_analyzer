@@ -398,11 +398,16 @@ private boolean isRecognizing = false;
     }
 
     private void recognizeCardRanks(Bitmap screen, CardVisionEngine.Result result) {
-        if (screen == null || result == null || result.cards.isEmpty()) return;
-        String[] ranks = new String[result.cards.size()];
-        for (int i = 0; i < result.cards.size(); i++) {
+        if (screen == null || result == null || result.cards == null) return;
+
+        // CardVisionEngine order: dealer 0-1, split 2-6, player 7-8.
+        // This test stage intentionally recognizes only the seven face-up cards.
+        String[] ranks = new String[9];
+        java.util.Arrays.fill(ranks, "?");
+        for (int i = 2; i <= 8 && i < result.cards.size(); i++) {
             CardVisionEngine.DetectedCard card = result.cards.get(i);
-            ranks[i] = rankVisionRecognizer.recognize(screen, card);
+            String rank = rankVisionRecognizer.recognize(screen, card);
+            ranks[i] = (rank == null || rank.trim().isEmpty()) ? "?" : rank;
         }
         updateRecognizedRanks(ranks);
     }
@@ -410,13 +415,14 @@ private boolean isRecognizing = false;
     private void updateRecognizedRanks(String[] ranks) {
         new Handler(Looper.getMainLooper()).post(() -> {
             if (playerCardsLine == null || splitCardsLine == null || dealerCardsLine == null) return;
-            // Render each table group from the player's right toward the left.
-            playerCardsLine.setText("بازیکن: [ " + ranks[8] + " ] [ " + ranks[7] + " ]");
-            splitCardsLine.setText("اسپلیت: [ " + ranks[6] + " ] [ " + ranks[5]
-                    + " ] [ " + ranks[4] + " ] [ " + ranks[3] + " ] [ " + ranks[2] + " ]");
-            dealerCardsLine.setText("دیلر: [ " + ranks[1] + " ] [ " + ranks[0] + " ]");
+
+            // Suits deliberately remain unknown until a validated suit classifier is integrated.
+            playerCardsLine.setText("بازیکن: [ " + ranks[8] + "? ] [ " + ranks[7] + "? ]");
+            splitCardsLine.setText("اسپلیت: [ " + ranks[6] + "? ] [ " + ranks[5]
+                    + "? ] [ " + ranks[4] + "? ] [ " + ranks[3] + "? ] [ " + ranks[2] + "? ]");
+            dealerCardsLine.setText("دیلر: [ ؟ ] [ ؟ ]");
             if (recognitionLine != null) {
-                recognitionLine.setText("تشخیص رتبه انجام شد | خال: مرحله بعد");
+                recognitionLine.setText("آزمایش ۷ کارت: رتبه فعال | خال هنوز نامشخص");
             }
         });
     }
