@@ -379,9 +379,9 @@ private boolean isRecognizing = false;
     isRecognizing = true;
 
     int left = (int) (crop.getWidth() * 0.70f);
-int top = (int) (crop.getHeight() * 0.255f);
-int width = (int) (crop.getWidth() * 0.28f);
-int height = (int) (crop.getHeight() * 0.07f);
+int top = (int) (crop.getHeight() * 0.215f);
+int width = (int) (crop.getWidth() * 0.29f);
+int height = (int) (crop.getHeight() * 0.12f);
 
 Bitmap cardArea = Bitmap.createBitmap(
         crop, left, top, width, height
