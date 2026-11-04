@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '.github/workflows/extract-rank-crops.yml'
+      - '.github/scripts/crop_rank_samples.py'
 
 permissions:
   contents: read
