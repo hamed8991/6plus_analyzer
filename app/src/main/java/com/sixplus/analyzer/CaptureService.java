@@ -46,8 +46,8 @@ public class CaptureService extends Service {
     private ImageReader reader;
     private long lastSaved;
     
-private TextRecognizer textRecognizer;
 private final CardVisionEngine cardVisionEngine = new CardVisionEngine();
+private final RankVisionRecognizer rankVisionRecognizer = new RankVisionRecognizer();
 private TextView recognitionLine;
     private TextView playerCardsLine;
     private TextView splitCardsLine;
@@ -61,9 +61,6 @@ private boolean isRecognizing = false;
     @Override
     public void onCreate() {
         super.onCreate();
-        textRecognizer = TextRecognition.getClient(
-        TextRecognizerOptions.DEFAULT_OPTIONS
-);
 
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = new NotificationChannel(
@@ -402,60 +399,12 @@ private boolean isRecognizing = false;
 
     private void recognizeCardRanks(Bitmap screen, CardVisionEngine.Result result) {
         if (screen == null || result == null || result.cards.isEmpty()) return;
-
-        final String[] ranks = new String[result.cards.size()];
-        final int[] completed = {0};
-        final int total = result.cards.size();
-
-        for (int i = 0; i < total; i++) {
-            final int index = i;
+        String[] ranks = new String[result.cards.size()];
+        for (int i = 0; i < result.cards.size(); i++) {
             CardVisionEngine.DetectedCard card = result.cards.get(i);
-            Bitmap indexArea = null;
-            Bitmap enlarged = null;
-            try {
-                // Rank glyphs are printed in the upper-left corner of each card.
-                int areaWidth = Math.max(1, Math.round(card.width * 0.46f));
-                int areaHeight = Math.max(1, Math.round(card.height * 0.44f));
-                indexArea = Bitmap.createBitmap(screen, card.left, card.top,
-                        Math.min(areaWidth, screen.getWidth() - card.left),
-                        Math.min(areaHeight, screen.getHeight() - card.top));
-                enlarged = Bitmap.createScaledBitmap(indexArea,
-                        indexArea.getWidth() * 5, indexArea.getHeight() * 5, true);
-                if (indexArea != enlarged) indexArea.recycle();
-
-                final Bitmap ocrBitmap = enlarged;
-                textRecognizer.process(InputImage.fromBitmap(ocrBitmap, 0))
-                        .addOnCompleteListener(task -> {
-                            String rank = "?";
-                            if (task.isSuccessful() && task.getResult() != null) {
-                                rank = parseRank(task.getResult().getText());
-                            }
-                            ranks[index] = rank;
-                            if (!ocrBitmap.isRecycled()) ocrBitmap.recycle();
-
-                            completed[0]++;
-                            if (completed[0] == total) {
-                                updateRecognizedRanks(ranks);
-                            }
-                        });
-            } catch (Exception ignored) {
-                if (indexArea != null && !indexArea.isRecycled()) indexArea.recycle();
-                if (enlarged != null && !enlarged.isRecycled()) enlarged.recycle();
-                ranks[index] = "?";
-                completed[0]++;
-                if (completed[0] == total) updateRecognizedRanks(ranks);
-            }
+            ranks[i] = rankVisionRecognizer.recognize(screen, card);
         }
-    }
-
-    private String parseRank(String raw) {
-        if (raw == null) return "?";
-        String value = raw.toUpperCase(java.util.Locale.US)
-                .replace(" ", "").replace("\\n", "")
-                .replace("|", "I").replace("O", "0");
-        java.util.regex.Matcher matcher = java.util.regex.Pattern
-                .compile("10|[6-9]|[AJQK]").matcher(value);
-        return matcher.find() ? matcher.group() : "?";
+        updateRecognizedRanks(ranks);
     }
 
     private void updateRecognizedRanks(String[] ranks) {
@@ -525,10 +474,6 @@ private boolean isRecognizing = false;
     @Override
     public void onDestroy() {
         stopCapture();
-        if (textRecognizer != null) {
-            textRecognizer.close();
-            textRecognizer = null;
-        }
         super.onDestroy();
     }
 
