@@ -67,7 +67,7 @@ public class CalibrationActivity extends Activity {
                 + "\\nترتیب: بازیکن ۲، اسپلیت ۵، دیلر ۲");
     }
 
-    private static class CardSelectionView extends View {
+    private class CardSelectionView extends View {
         private final Bitmap bitmap;
         private final ArrayList<RectF> rects = new ArrayList<>();
         private final Paint imagePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
