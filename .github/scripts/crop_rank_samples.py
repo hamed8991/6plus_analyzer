@@ -52,3 +52,5 @@ with zipfile.ZipFile("rank-crops.zip", "w", zipfile.ZIP_DEFLATED) as z:
             z.write(p, p.relative_to(OUT.parent))
 
 print(f"Processed {len(images)} screenshots; created {len(rows)} card crops and {len(rows)} rank patches.")
+
+# Trigger extraction workflow.
