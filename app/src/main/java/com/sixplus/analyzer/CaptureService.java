@@ -423,14 +423,15 @@ private boolean isRecognizing = false;
                         indexArea.getWidth() * 3, indexArea.getHeight() * 3, true);
                 if (indexArea != enlarged) indexArea.recycle();
 
-                textRecognizer.process(InputImage.fromBitmap(enlarged, 0))
+                final Bitmap ocrBitmap = enlarged;
+                textRecognizer.process(InputImage.fromBitmap(ocrBitmap, 0))
                         .addOnCompleteListener(task -> {
                             String rank = "?";
                             if (task.isSuccessful() && task.getResult() != null) {
                                 rank = parseRank(task.getResult().getText());
                             }
                             ranks[index] = rank;
-                            if (enlarged != null && !enlarged.isRecycled()) enlarged.recycle();
+                            if (!ocrBitmap.isRecycled()) ocrBitmap.recycle();
 
                             completed[0]++;
                             if (completed[0] == total) {
