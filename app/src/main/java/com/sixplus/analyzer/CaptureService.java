@@ -315,132 +315,117 @@ private boolean isRecognizing = false;
     }
 
     private void saveFrame(ImageReader imageReader) {
-
         Image image = null;
+        Bitmap padded = null;
+        Bitmap crop = null;
+        Bitmap cardArea = null;
+        Bitmap scaledCardArea = null;
+        boolean recognitionStarted = false;
 
         try {
-
             image = imageReader.acquireLatestImage();
-
-            if (image == null) {
-                return;
-            }
+            if (image == null) return;
 
             long now = System.currentTimeMillis();
-
-            if (now - lastSaved < 2000) {
-                return;
-            }
-
+            if (now - lastSaved < 2000) return;
             lastSaved = now;
 
             Image.Plane plane = image.getPlanes()[0];
-
             ByteBuffer buffer = plane.getBuffer();
-
             int pixelStride = plane.getPixelStride();
             int rowStride = plane.getRowStride();
+            int paddedWidth = image.getWidth()
+                    + (rowStride - pixelStride * image.getWidth()) / pixelStride;
 
-            Bitmap padded = Bitmap.createBitmap(
-                    image.getWidth() +
-                            (rowStride - pixelStride * image.getWidth())
-                                    / pixelStride,
-                    image.getHeight(),
-                    Bitmap.Config.ARGB_8888
+            padded = Bitmap.createBitmap(
+                    paddedWidth, image.getHeight(), Bitmap.Config.ARGB_8888
             );
-
             buffer.rewind();
             padded.copyPixelsFromBuffer(buffer);
 
-            Bitmap crop = Bitmap.createBitmap(
-                    padded,
-                    0,
-                    0,
-                    image.getWidth(),
-                    image.getHeight()
+            crop = Bitmap.createBitmap(
+                    padded, 0, 0, image.getWidth(), image.getHeight()
             );
 
-            File file = new File(
-                    getExternalFilesDir(null),
-                    "latest-screen.png"
-            );
-
-            try (FileOutputStream output =
-                         new FileOutputStream(file)) {
-
-                crop.compress(
-                        Bitmap.CompressFormat.PNG,
-                        100,
-                        output
-                );
+            File directory = getExternalFilesDir(null);
+            if (directory == null) {
+                throw new IllegalStateException("فضای ذخیره‌سازی برنامه در دسترس نیست");
+            }
+            File file = new File(directory, "latest-screen.png");
+            try (FileOutputStream output = new FileOutputStream(file)) {
+                if (!crop.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                    throw new IllegalStateException("ذخیره تصویر ناموفق بود");
+                }
             }
 
-            if (!isRecognizing) {
-    isRecognizing = true;
+            if (isRecognizing || textRecognizer == null) return;
 
-    int left = (int) (crop.getWidth() * 0.70f);
-int top = (int) (crop.getHeight() * 0.215f);
-int width = (int) (crop.getWidth() * 0.29f);
-int height = (int) (crop.getHeight() * 0.12f);
+            int left = Math.max(0, Math.min(crop.getWidth() - 1,
+                    (int) (crop.getWidth() * 0.70f)));
+            int top = Math.max(0, Math.min(crop.getHeight() - 1,
+                    (int) (crop.getHeight() * 0.215f)));
+            int width = Math.max(1, Math.min(crop.getWidth() - left,
+                    (int) (crop.getWidth() * 0.29f)));
+            int height = Math.max(1, Math.min(crop.getHeight() - top,
+                    (int) (crop.getHeight() * 0.12f)));
 
-Bitmap cardArea = Bitmap.createBitmap(
-        crop, left, top, width, height
-);
+            cardArea = Bitmap.createBitmap(crop, left, top, width, height);
+            scaledCardArea = Bitmap.createScaledBitmap(
+                    cardArea, Math.max(1, width * 3),
+                    Math.max(1, height * 3), true
+            );
+            cardArea.recycle();
+            cardArea = null;
 
-Bitmap scaledCardArea = Bitmap.createScaledBitmap(
-        cardArea,
-        cardArea.getWidth() * 3,
-        cardArea.getHeight() * 3,
-        true
-);
+            isRecognizing = true;
+            recognitionStarted = true;
+            InputImage inputImage = InputImage.fromBitmap(scaledCardArea, 0);
+            final Bitmap bitmapForRecognition = scaledCardArea;
+            scaledCardArea = null;
 
-InputImage inputImage = InputImage.fromBitmap(scaledCardArea, 0);
+            textRecognizer.process(inputImage)
+                    .addOnSuccessListener(result -> {
+                        String detectedText = result.getText();
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            if (recognitionLine != null) {
+                                recognitionLine.setText(
+                                        detectedText == null || detectedText.trim().isEmpty()
+                                                ? "OCR آزمایشی: متنی پیدا نشد"
+                                                : "متن شناسایی‌شده: " + detectedText
+                                );
+                            }
+                        });
+                    })
+                    .addOnFailureListener(e -> new Handler(Looper.getMainLooper()).post(() -> {
+                        if (recognitionLine != null) {
+                            recognitionLine.setText("خطای OCR: " + e.getClass().getSimpleName());
+                        }
+                    }))
+                    .addOnCompleteListener(task -> {
+                        if (!bitmapForRecognition.isRecycled()) {
+                            bitmapForRecognition.recycle();
+                        }
+                        isRecognizing = false;
+                    });
 
-    textRecognizer.process(inputImage)
-            .addOnSuccessListener(result -> {
-                String detectedText = result.getText();
-
+        } catch (Exception e) {
+            if (recognitionStarted) isRecognizing = false;
+            if (recognitionLine != null) {
+                String message = e.getMessage();
+                String detail = message == null || message.trim().isEmpty()
+                        ? e.getClass().getSimpleName() : message;
                 new Handler(Looper.getMainLooper()).post(() -> {
                     if (recognitionLine != null) {
-                        recognitionLine.setText(
-                                "متن شناسایی‌شده: " + detectedText
-                        );
+                        recognitionLine.setText("خطای دریافت تصویر: " + detail);
                     }
                 });
-            })
-            .addOnFailureListener(e -> {
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    if (recognitionLine != null) {
-                        recognitionLine.setText("خطا در تشخیص تصویر");
-                    }
-                });
-            })
-            .addOnCompleteListener(task -> {
-                isRecognizing = false;
-                if (!scaledCardArea.isRecycled()) {
-    scaledCardArea.recycle();
-                }
-                if (!crop.isRecycled()) {
-                    if (!cardArea.isRecycled()) {
-    cardArea.recycle();
-}
-                    crop.recycle();
-                }
-            });
-} else {
-    crop.recycle();
-}
-
-padded.recycle();
-
-
-        } catch (Exception ignored) {
-
+            }
         } finally {
-
-            if (image != null) {
-                image.close();
-            }
+            if (cardArea != null && !cardArea.isRecycled()) cardArea.recycle();
+            if (scaledCardArea != null && !scaledCardArea.isRecycled()) scaledCardArea.recycle();
+            if (crop != null && !crop.isRecycled()) crop.recycle();
+            if (padded != null && !padded.isRecycled()) padded.recycle();
+            if (image != null) image.close();
         }
     }
 
@@ -497,6 +482,10 @@ padded.recycle();
     @Override
     public void onDestroy() {
         stopCapture();
+        if (textRecognizer != null) {
+            textRecognizer.close();
+            textRecognizer = null;
+        }
         super.onDestroy();
     }
 
