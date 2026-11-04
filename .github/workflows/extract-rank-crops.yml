@@ -1,0 +1,28 @@
+name: Extract real card rank crops
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crop-ranks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout screenshots from repository
+        uses: actions/checkout@v4
+
+      - name: Install image processing dependency
+        run: python -m pip install --upgrade pillow
+
+      - name: Crop card corners with Python
+        run: python .github/scripts/crop_rank_samples.py
+
+      - name: Upload cropped images ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: rank-crops
+          path: rank-crops.zip
+          if-no-files-found: error
+          retention-days: 7
