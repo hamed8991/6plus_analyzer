@@ -378,7 +378,16 @@ private boolean isRecognizing = false;
             if (!isRecognizing) {
     isRecognizing = true;
 
-    InputImage inputImage = InputImage.fromBitmap(crop, 0);
+    int left = (int) (crop.getWidth() * 0.42f);
+int top = (int) (crop.getHeight() * 0.24f);
+int width = crop.getWidth() - left;
+int height = (int) (crop.getHeight() * 0.22f);
+
+Bitmap cardArea = Bitmap.createBitmap(
+        crop, left, top, width, height
+);
+
+InputImage inputImage = InputImage.fromBitmap(cardArea, 0);
 
     textRecognizer.process(inputImage)
             .addOnSuccessListener(result -> {
