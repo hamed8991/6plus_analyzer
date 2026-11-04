@@ -311,6 +311,7 @@ private boolean isRecognizing = false;
         line.setPadding(2, 5, 2, 5);
 
         overlayBody.addView(line);
+        return line;
     }
 
     private void saveFrame(ImageReader imageReader) {
