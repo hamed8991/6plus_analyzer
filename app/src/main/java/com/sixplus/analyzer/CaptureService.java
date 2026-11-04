@@ -387,7 +387,14 @@ Bitmap cardArea = Bitmap.createBitmap(
         crop, left, top, width, height
 );
 
-InputImage inputImage = InputImage.fromBitmap(cardArea, 0);
+Bitmap scaledCardArea = Bitmap.createScaledBitmap(
+        cardArea,
+        cardArea.getWidth() * 3,
+        cardArea.getHeight() * 3,
+        true
+);
+
+InputImage inputImage = InputImage.fromBitmap(scaledCardArea, 0);
 
     textRecognizer.process(inputImage)
             .addOnSuccessListener(result -> {
