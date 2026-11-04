@@ -49,6 +49,7 @@ public class CaptureService extends Service {
 private TextRecognizer textRecognizer;
 private TextView recognitionLine;
 private boolean isRecognizing = false;
+private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private WindowManager windowManager;
     private View overlayView;
     private LinearLayout overlayBody;
@@ -376,62 +377,12 @@ private boolean isRecognizing = false;
             }
 
             if (!isRecognizing) {
-    isRecognizing = true;
+                recognizeCardSlots(crop);
+            } else {
+                crop.recycle();
+            }
 
-    int left = (int) (crop.getWidth() * 0.70f);
-int top = (int) (crop.getHeight() * 0.215f);
-int width = (int) (crop.getWidth() * 0.29f);
-int height = (int) (crop.getHeight() * 0.12f);
-
-Bitmap cardArea = Bitmap.createBitmap(
-        crop, left, top, width, height
-);
-
-Bitmap scaledCardArea = Bitmap.createScaledBitmap(
-        cardArea,
-        cardArea.getWidth() * 3,
-        cardArea.getHeight() * 3,
-        true
-);
-
-InputImage inputImage = InputImage.fromBitmap(scaledCardArea, 0);
-
-    textRecognizer.process(inputImage)
-            .addOnSuccessListener(result -> {
-                String detectedText = result.getText();
-
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    if (recognitionLine != null) {
-                        recognitionLine.setText(
-                                "متن شناسایی‌شده: " + detectedText
-                        );
-                    }
-                });
-            })
-            .addOnFailureListener(e -> {
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    if (recognitionLine != null) {
-                        recognitionLine.setText("خطا در تشخیص تصویر");
-                    }
-                });
-            })
-            .addOnCompleteListener(task -> {
-                isRecognizing = false;
-                if (!scaledCardArea.isRecycled()) {
-    scaledCardArea.recycle();
-                }
-                if (!crop.isRecycled()) {
-                    if (!cardArea.isRecycled()) {
-    cardArea.recycle();
-}
-                    crop.recycle();
-                }
-            });
-} else {
-    crop.recycle();
-}
-
-padded.recycle();
+            padded.recycle();
 
 
         } catch (Exception ignored) {
@@ -442,6 +393,123 @@ padded.recycle();
                 image.close();
             }
         }
+    }
+
+
+    /**
+     * First-pass 9-slot reader.
+     *
+     * The known game panel occupies the right side of the screen. It is split
+     * into Dealer (2), Board (5), and Player (2) rows. OCR reads the rank-like
+     * text in each slot; suit recognition is deliberately not guessed here.
+     * The normalized panel coordinates are a calibration starting point and
+     * must be verified against a live game screenshot.
+     */
+    private void recognizeCardSlots(Bitmap screen) {
+        final int panelLeft = (int) (screen.getWidth() * 0.70f);
+        final int panelTop = (int) (screen.getHeight() * 0.215f);
+        final int panelWidth = Math.min(
+                screen.getWidth() - panelLeft,
+                (int) (screen.getWidth() * 0.29f)
+        );
+        final int panelHeight = Math.min(
+                screen.getHeight() - panelTop,
+                (int) (screen.getHeight() * 0.12f)
+        );
+
+        if (panelWidth < 9 || panelHeight < 3) {
+            screen.recycle();
+            return;
+        }
+
+        Bitmap panel = Bitmap.createBitmap(
+                screen, panelLeft, panelTop, panelWidth, panelHeight
+        );
+        screen.recycle();
+
+        final String[] labels = {
+                "D1", "D2", "B1", "B2", "B3", "B4", "B5", "P1", "P2"
+        };
+        final String[] values = new String[9];
+        final int[] rowCounts = {2, 5, 2};
+        final int[] rowStarts = {0, 2, 7};
+        final java.util.concurrent.atomic.AtomicInteger completed =
+                new java.util.concurrent.atomic.AtomicInteger(0);
+
+        isRecognizing = true;
+
+        int rowHeight = panel.getHeight() / 3;
+        for (int row = 0; row < 3; row++) {
+            int count = rowCounts[row];
+            int cellWidth = panel.getWidth() / count;
+            for (int col = 0; col < count; col++) {
+                final int index = rowStarts[row] + col;
+                int cellLeft = col * cellWidth;
+                int cellTop = row * rowHeight;
+                int cellRight = (col == count - 1)
+                        ? panel.getWidth() : (col + 1) * cellWidth;
+                int cellBottom = (row == 2)
+                        ? panel.getHeight() : (row + 1) * rowHeight;
+
+                int insetX = Math.max(1, (cellRight - cellLeft) / 12);
+                int insetY = Math.max(1, (cellBottom - cellTop) / 10);
+                int left = Math.min(panel.getWidth() - 1, cellLeft + insetX);
+                int top = Math.min(panel.getHeight() - 1, cellTop + insetY);
+                int width = Math.max(1, cellRight - cellLeft - 2 * insetX);
+                int height = Math.max(1, cellBottom - cellTop - 2 * insetY);
+
+                Bitmap slot = Bitmap.createBitmap(panel, left, top, width, height);
+                Bitmap enlarged = Bitmap.createScaledBitmap(
+                        slot, Math.max(96, width * 4),
+                        Math.max(96, height * 4), true
+                );
+                slot.recycle();
+
+                final Bitmap imageBitmap = enlarged;
+                try {
+                    textRecognizer.process(InputImage.fromBitmap(imageBitmap, 0))
+                            .addOnSuccessListener(result -> {
+                                String text = result.getText()
+                                        .replaceAll("\\s+", "")
+                                        .replaceAll("[^0-9A-Za-z]", "");
+                                values[index] = text.isEmpty() ? "?" : text;
+                            })
+                            .addOnFailureListener(error -> values[index] = "?")
+                            .addOnCompleteListener(task -> {
+                                if (!imageBitmap.isRecycled()) imageBitmap.recycle();
+                                if (completed.incrementAndGet() == 9) {
+                                    String dealer = "Dealer: " + values[0] + "  " + values[1];
+                                    StringBuilder board = new StringBuilder("Board: ");
+                                    for (int i = 2; i <= 6; i++) {
+                                        if (i > 2) board.append("  ");
+                                        board.append(values[i]);
+                                    }
+                                    String player = "Player: " + values[7] + "  " + values[8];
+                                    mainHandler.post(() -> {
+                                        if (recognitionLine != null) {
+                                            recognitionLine.setText(
+                                                    dealer + "\\n" + board + "\\n" + player
+                                            );
+                                        }
+                                        isRecognizing = false;
+                                    });
+                                }
+                            });
+                } catch (Exception error) {
+                    if (!imageBitmap.isRecycled()) imageBitmap.recycle();
+                    values[index] = "?";
+                    if (completed.incrementAndGet() == 9) {
+                        mainHandler.post(() -> {
+                            if (recognitionLine != null) {
+                                recognitionLine.setText("تشخیص ۹ جایگاه انجام شد؛ بعضی خانه‌ها نامشخص‌اند.");
+                            }
+                            isRecognizing = false;
+                        });
+                    }
+                }
+            }
+        }
+        panel.recycle();
     }
 
     private Notification notification() {
@@ -497,6 +565,9 @@ padded.recycle();
     @Override
     public void onDestroy() {
         stopCapture();
+        if (textRecognizer != null) {
+            textRecognizer.close();
+        }
         super.onDestroy();
     }
 
