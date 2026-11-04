@@ -302,7 +302,7 @@ private boolean isRecognizing = false;
         }
     }
 
-    private void addOverlayLine(String value) {
+    private TextView addOverlayLine(String value) {
 
         TextView line = new TextView(this);
         line.setText(value);
