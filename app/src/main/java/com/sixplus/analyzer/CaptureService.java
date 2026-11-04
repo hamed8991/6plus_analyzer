@@ -49,6 +49,9 @@ public class CaptureService extends Service {
 private TextRecognizer textRecognizer;
 private final CardVisionEngine cardVisionEngine = new CardVisionEngine();
 private TextView recognitionLine;
+    private TextView playerCardsLine;
+    private TextView splitCardsLine;
+    private TextView dealerCardsLine;
 private boolean isRecognizing = false;
     private WindowManager windowManager;
     private View overlayView;
@@ -217,8 +220,10 @@ private boolean isRecognizing = false;
         overlayBody.setPadding(4, 8, 4, 2);
 
         addOverlayLine("وضعیت: دریافت تصویر فعال");
-        recognitionLine = addOverlayLine("تشخیص کارت‌ها: در انتظار تصویر");
-        addOverlayLine("Player / Dealer / Split: —");
+        playerCardsLine = addOverlayLine("بازیکن: [ ؟ ] [ ؟ ]");
+        splitCardsLine = addOverlayLine("اسپلیت: [ ؟ ] [ ؟ ] [ ؟ ] [ ؟ ] [ ؟ ]");
+        dealerCardsLine = addOverlayLine("دیلر: [ ؟ ] [ ؟ ]");
+        recognitionLine = addOverlayLine("وضعیت تشخیص: در انتظار تصویر");
         addOverlayLine("پیشنهاد شرط: هنوز محاسبه نمی‌شود");
 
         panel.addView(overlayBody);
@@ -367,8 +372,8 @@ private boolean isRecognizing = false;
                 records.write(visualResult.csv.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             }
             if (recognitionLine != null) {
-                recognitionLine.setText("ناحیه‌های کارت پیدا شده: "
-                        + visualResult.cards.size() + " از ۹ | رتبه و خال: در انتظار آموزش");
+                recognitionLine.setText("ناحیه‌های احتمالی پیدا شده: "
+                        + visualResult.cards.size() + " از ۹ | تشخیص عدد و خال در حال توسعه");
             }
 
             if (isRecognizing || textRecognizer == null) return;
@@ -403,8 +408,8 @@ private boolean isRecognizing = false;
                             if (recognitionLine != null) {
                                 recognitionLine.setText(
                                         detectedText == null || detectedText.trim().isEmpty()
-                                                ? "OCR آزمایشی: متنی پیدا نشد"
-                                                : "متن شناسایی‌شده: " + detectedText
+                                                ? "وضعیت تشخیص: متن قابل‌خواندن پیدا نشد"
+                                                : "OCR آزمایشی: " + detectedText
                                 );
                             }
                         });
